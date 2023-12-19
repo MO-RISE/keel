@@ -74,5 +74,6 @@ class KeelsonScans(client.Scans):
             elif isinstance(packet, ImuPacket):
                 yield {
                     "acceleration": packet.accel,
-                    "angular_velocity": packet.angular_vel
+                    "angular_velocity": packet.angular_vel,
+                    "capture_timestamp": packet.capture_timestamp
                 }, None
