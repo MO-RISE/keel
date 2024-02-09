@@ -87,18 +87,22 @@ def lidarscan_to_pointcloud_proto_payload(lidar_scan, info):
     return payload
 
 
-pcap_file_path = "brefv/sample_data/OS-2-128_v2.5.1-rc.1_1024x10_20230419_100425.json"
-json_file_path = "brefv/sample_data/OS-2-128_v2.5.1-rc.1_1024x10_20230419_100425-000.pcap"
+pcap_file_path = "../../brefv/sample_data/OS-2-128_v2.5.1-rc.1_1024x10_20230419_100425-000.pcap"
+json_file_path = "../../brefv/sample_data/OS-2-128_v2.5.1-rc.1_1024x10_20230419_100425.json"
 lidar_topic_name = f"{KEELSON_INTERFACE_TYPE}/{KEELSON_TAG_POINT_CLOUD}"
 imu_topic_name = f"{KEELSON_INTERFACE_TYPE}/{KEELSON_TAG_IMU_READING}"
 
 
 def main():
     conf = zenoh.Config()
+    
     session = zenoh.open(conf)
 
     lidar_publisher = session.declare_publisher(lidar_topic_name)
     imu_publisher = session.declare_publisher(imu_topic_name)
+
+    print(lidar_topic_name)
+    print(imu_topic_name)
 
     with open(json_file_path, 'r') as f:
         metadata = client.SensorInfo(f.read())
