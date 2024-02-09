@@ -87,49 +87,25 @@ def lidarscan_to_pointcloud_proto_payload(lidar_scan, info):
     return payload
 
 
-def run(session: zenoh.Session, args: argparse.Namespace):
-    imu_topic = brefv.construct_pub_sub_topic(
-        realm=args.realm,
-        entity_id=args.entity_id,
-        interface_type=KEELSON_INTERFACE_TYPE,
-        interface_id=args.interface_id,
-        tag=KEELSON_TAG_IMU_READING,
-        source_id=args.source_id,
-    )
+pcap_file_path = "brefv/sample_data/OS-2-128_v2.5.1-rc.1_1024x10_20230419_100425.json"
+json_file_path = "brefv/sample_data/OS-2-128_v2.5.1-rc.1_1024x10_20230419_100425-000.pcap"
+lidar_topic_name = f"{KEELSON_INTERFACE_TYPE}/{KEELSON_TAG_POINT_CLOUD}"
+imu_topic_name = f"{KEELSON_INTERFACE_TYPE}/{KEELSON_TAG_IMU_READING}"
 
-    lidar_topic = brefv.construct_pub_sub_topic(
-        realm=args.realm,
-        entity_id=args.entity_id,
-        interface_type=KEELSON_INTERFACE_TYPE,
-        interface_id=args.interface_id,
-        tag=KEELSON_TAG_POINT_CLOUD,
-        source_id=args.source_id,
-    )
 
-    logging.info("IMU topic: %s", imu_topic)
-    logging.info("LiDAR topic: %s", lidar_topic)
+def main():
+    conf = zenoh.Config()
+    session = zenoh.open(conf)
 
-    imu_publisher = session.declare_publisher(
-        imu_topic,
-        priority=zenoh.Priority.INTERACTIVE_HIGH(),
-        congestion_control=zenoh.CongestionControl.DROP(),
-    )
+    lidar_publisher = session.declare_publisher(lidar_topic_name)
+    imu_publisher = session.declare_publisher(imu_topic_name)
 
-    lidar_publisher = session.declare_publisher(
-        lidar_topic,
-        priority=zenoh.Priority.INTERACTIVE_HIGH(),
-        congestion_control=zenoh.CongestionControl.DROP(),
-    )
-
-    with open(args.metadata_file, 'r') as f:
+    with open(json_file_path, 'r') as f:
         metadata = client.SensorInfo(f.read())
-        logging.info("Read metadata from %s", args.metadata_file)
 
-    pcap_source = pcap.Pcap(args.pcap_file, metadata)
-    logging.info("Loaded pcap file: %s", args.pcap_file)
+    pcap_source = pcap.Pcap(pcap_file_path, metadata)
 
     scans = KeelsonScans(source=pcap_source)
-    logging.info("Created scans generator for %s", args.pcap_file)
 
     try:
 
@@ -139,78 +115,22 @@ def run(session: zenoh.Session, args: argparse.Namespace):
                 payload = imu_data_to_imu_proto_payload(imu_data)
 
                 serialized_payload = payload.SerializeToString()
-                logging.debug("...serialized.")
 
-                envelope = brefv.enclose(serialized_payload)
-                logging.debug("...enclosed into envelope, serialized as: %s", envelope)
-
-                imu_publisher.put(envelope)
-                logging.info("...published to zenoh!")
+                imu_publisher.put(serialized_payload)
 
             elif lidar_scan is not None:
                 payload = lidarscan_to_pointcloud_proto_payload(lidar_scan, metadata)
 
                 serialized_payload = payload.SerializeToString()
-                logging.debug("...serialized.")
 
-                envelope = brefv.enclose(serialized_payload)
-                logging.debug("...enclosed into envelope, serialized as: %s", envelope)
-
-                lidar_publisher.put(envelope)
-                logging.info("...published to zenoh!")
+                lidar_publisher.put(serialized_payload)
 
 
     except ClientTimeout:
         logging.info("Timeout occurred while waiting for packets.")
 
+    session.close()
+
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        prog="ouster",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-    )
-    parser.add_argument("--log-level", type=int, default=logging.WARNING)
-    parser.add_argument(
-        "--connect",
-        action="append",
-        type=str,
-        help="Endpoints to connect to.",
-    )
-
-    parser.add_argument("-r", "--realm", type=str, required=True)
-    parser.add_argument("-e", "--entity-id", type=str, required=True)
-    parser.add_argument("-i", "--interface-id", type=str, required=True)
-    parser.add_argument("-s", "--source-id", type=str, required=True)
-    parser.add_argument("-p", "--pcap-file", type=str, required=True)
-    parser.add_argument("-m", "--metadata-file", type=str, required=True)
-
-    ## Parse arguments and start doing our thing
-    args = parser.parse_args()
-
-    # Setup logger
-    logging.basicConfig(
-        format="%(asctime)s %(levelname)s %(name)s %(message)s", level=args.log_level
-    )
-    logging.captureWarnings(True)
-    warnings.filterwarnings("once")
-
-    ## Construct session
-    logging.info("Opening Zenoh session...")
-    conf = zenoh.Config()
-
-    if args.connect is not None:
-        conf.insert_json5(zenoh.config.CONNECT_KEY, json.dumps(args.connect))
-    session = zenoh.open(conf)
-
-
-    def _on_exit():
-        session.close()
-
-
-    atexit.register(_on_exit)
-
-    try:
-        run(session, args)
-    except KeyboardInterrupt:
-        logging.info("Program ended due to user request (Ctrl-C)")
-        pass
+    main()
